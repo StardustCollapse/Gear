@@ -1,0 +1,168 @@
+APIC_BASE = 0xFEE00000
+HW_STATUS_REG = 0x1000
+GLOBAL_VAR = 0x1111
+VGA_BUF = 0xB8000
+
+// Simulated hardware buffers for user-mode execution
+SIM_APIC:1024 = 0
+SIM_VGA:4000 = 0
+SIM_PKT:64 = 0
+
+handle_irq(irq_num, frame_addr) {
+    status:4 = 0
+    
+    loop
+    {
+        nested read_hw_status;
+        
+        if(status == 0) { break }
+        
+        if(status & 0x01)
+        {
+            nested handle_rx_packet;
+        }
+        
+        nested ack_interrupt;
+    }
+    .nested 
+    {
+        read_hw_status {
+            status = [APIC_BASE:4]@0x10
+        },
+        handle_rx_packet {
+            pkt = rx_desc[frame_addr]
+            nested copy_to_ring_buffer;
+        },
+        ack_interrupt {
+            [APIC_BASE:4]@0xB0 = 0
+        }
+    }
+    .nested
+    {
+        copy_to_ring_buffer {
+            // Acknowledge receipt by clearing hardware status bit
+            [APIC_BASE:4]@0x10 = 0
+        }
+    }
+}
+
+clear_and_print() {    
+    i:4 = 0
+    loop {
+        if(i == 2000) { break }
+        [VGA_BUF:2]@i = 0x0A20
+        i = i + 1
+    }
+    [VGA_BUF:2]@0 = 0x0A47
+}
+
+process_packet(buf_addr, count) {
+    hdr = pkt_hdr[buf_addr]
+    
+    if(hdr@0.ver_ihl != 0x45) { return -1 }
+
+    [hdr]->len
+        .then(len) { if(len < 20) { return -2 } }
+        .then(len) { [buf_addr + 8:4]@0 }
+        .then(first_val) {
+            if(first_val == 0xDEADBEEF) {
+                HW_STATUS_REG:2 = 0x0001
+                return 0
+            }
+        }
+
+    payload_ptr = buf_addr + 8
+    sum:4 = 0
+    i:4 = 0
+
+    loop {
+        if(i == count) { break }
+
+        [payload_ptr:4]@i
+            .then(val) { val & 0x00FF }
+            .then(masked) { sum = sum + masked }
+            
+        i = i + 1
+    }
+
+    HW_STATUS_REG:2 = sum:2
+    return sum
+}
+
+modify_data(val) {
+    print(val)          // local copy in callee: 0x55555555
+    print(<val>)        // original data in caller: 0x55555555
+
+    val = 50            // modifies ONLY the local copy
+    <val> = 0x99991234  // modifies caller's original data!
+
+    print(val)          // 50 (local copy is 50)
+    print(<val>)        // 0x99991234 (caller's original is 0x99991234!)
+                        // Same variable name 'val', two different values simultaneously!
+
+    orig_addr = [<val>] // gets address of caller's original data
+}
+
+test_all() {
+    // 1. Basic arithmetic and byte slicing
+    a = 128
+    b = 255
+    c:4 = a:2 + b:1
+    print(c)
+
+    val = 0x12345678
+    x = val:1
+    print(x)
+
+    y = val:2
+    print(y)
+
+    val:2 = 0x1234
+    print(val)
+
+    // 2. Caller duality: modify_data
+    orig = 0x55555555
+    modify_data(orig)
+    print(orig)         // 0x99991234 (modified by <val>)!
+
+    // 3. Global variable direct access
+    GLOBAL_VAR = 0xABCD
+    print(GLOBAL_VAR)
+
+    // 4. Run clear_and_print() with simulated VGA buffer
+    VGA_BUF = [SIM_VGA]
+    clear_and_print()
+    vga_cell0 = [VGA_BUF:2]@0
+    print(vga_cell0)    // 0x0A47 ('G' green on black)
+    VGA_BUF = 0xB8000   // restore hardware address
+
+    // 5. Run handle_irq() with simulated APIC
+    APIC_BASE = [SIM_APIC]
+    [APIC_BASE:4]@0x10 = 0x01   // status = RX interrupt pending
+    irq_num = 33
+    frame_addr = 0x2000
+    handle_irq(irq_num, frame_addr)
+    status_done = [APIC_BASE:4]@0x10
+    print(status_done)  // 0 (cleared by copy_to_ring_buffer)
+    apic_eoi = [APIC_BASE:4]@0xB0
+    print(apic_eoi)     // 0 (written by ack_interrupt)
+    APIC_BASE = 0xFEE00000 // restore hardware address
+
+    // 6. Run process_packet() with simulated packet
+    pkt = [SIM_PKT]
+    [pkt:1]@0 = 0x45            // ver_ihl = 0x45
+    [pkt:4]@1 = 28              // len = 28 (>= 20)
+    [pkt + 8:4]@0 = 10          // payload[0] = 10
+    [pkt + 8:4]@1 = 20          // payload[1] = 20
+    pkt_count = 2
+    pkt_result = process_packet(pkt, pkt_count)
+    print(pkt_result)   // 30 (0x1E)
+    print(HW_STATUS_REG)// 30 (0x1E)
+
+    return 0
+}
+
+main() {
+    test_all()
+    return 0
+}
