@@ -120,6 +120,11 @@ test_all() {
     val:2 = 0x1234
     print(val)
 
+    sa:4 = 0x12345678
+    sb:2 = 0x1234
+    sa:4 = sb:2
+    print(sa)
+
     // 2. Caller duality: modify_data
     orig = 0x55555555
     modify_data(orig)
@@ -164,5 +169,9 @@ test_all() {
 
 main() {
     test_all()
+    a:4 = 0x12345678
+    b:2 = 0x1234
+    a:4 = b:2
+    print(a)
     return 0
 }

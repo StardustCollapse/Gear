@@ -125,6 +125,8 @@ static VAR_INFO AllocLocal(const std::string& name, uint8_t size)
 	return var;
 }
 
+static uint8_t g_LastExprSize = 0;
+
 // ============================================================
 // Angle bracket syntax: <IDENTIFIER>
 // Semantic: Access the original data of function parameter 'name' (dereferencing the pointer)
@@ -544,12 +546,15 @@ static void ParsePrimary()
 			Advance();
 			read_size = (uint8_t)Peek().value;
 			Advance();
+			g_LastExprSize = read_size;
 		}
 
 		auto it = g_Locals.find(name);
 		if (it != g_Locals.end())
 		{
 			auto& var = it->second;
+			if (read_size == 8 && var.size < 8)
+				g_LastExprSize = var.size;
 			uint8_t eff_size = (read_size < var.size) ? read_size : var.size;
 			EmitLoadMem("rax", eff_size, "[rbp" + std::to_string(var.rbp_offset) + "]");
 		}
@@ -1039,22 +1044,26 @@ static void ParseStatement()
 				uint8_t slice_size = (uint8_t)Peek().value;
 				Advance();
 				ExpectOp('=', "=");
+				g_LastExprSize = 0;
 				ParseExpression();
+				uint8_t write_size = slice_size;
+				if (g_LastExprSize > 0 && g_LastExprSize < write_size)
+					write_size = g_LastExprSize;
 				Gen::EmitLine("lea rcx, [" + name + "]");
-				Gen::EmitLine("mov " + SizeDirective(slice_size) + " [rcx], " + RegForSize("rax", slice_size));
+				Gen::EmitLine("mov " + SizeDirective(write_size) + " [rcx], " + RegForSize("rax", write_size));
 				return;
 			}
 			if (CheckOp('='))
 			{
 				Advance();
+				g_LastExprSize = 0;
 				ParseExpression();
-				Gen::EmitLine("mov QWORD PTR [" + name + "], rax");
+				Gen::EmitLine("lea rcx, [" + name + "]");
+				Gen::EmitLine("mov QWORD PTR [rcx], rax");
 				return;
 			}
 		}
 
-		// Variable declaration (new) or Byte Slice Assignment (existing var):
-		// e.g. a:2 = 0x1234 (修改 a 的低 2 bytes，保留高位 bytes)
 		if (CheckOp(':'))
 		{
 			Advance();
@@ -1065,29 +1074,32 @@ static void ParseStatement()
 			auto it = g_Locals.find(name);
 			if (it != g_Locals.end())
 			{
-				// Existing variable: partial byte slice assignment!
 				auto& var = it->second;
+				g_LastExprSize = 0;
 				ParseExpression(); // RHS in rax
-				Gen::EmitLine("mov " + SizeDirective(slice_size) + " [rbp" + std::to_string(var.rbp_offset) + "], " + RegForSize("rax", slice_size));
+				uint8_t write_size = slice_size;
+				if (g_LastExprSize > 0 && g_LastExprSize < write_size)
+					write_size = g_LastExprSize;
+				Gen::EmitLine("mov " + SizeDirective(write_size) + " [rbp" + std::to_string(var.rbp_offset) + "], " + RegForSize("rax", write_size));
 			}
 			else
 			{
-				// New variable declaration with explicit size
 				AllocLocal(name, slice_size);
 				auto& var = g_Locals[name];
+				g_LastExprSize = 0;
 				ParseExpression();
 				Gen::EmitLine("mov " + SizeDirective(var.size) + " [rbp" + std::to_string(var.rbp_offset) + "], " + RegForSize("rax", var.size));
 			}
 			return;
 		}
 
-		// Full assignment: name = expr (改區域變數)
 		if (CheckOp('='))
 		{
 			Advance();
 			if (g_Locals.find(name) == g_Locals.end())
 				AllocLocal(name, 8);
 			auto& var = g_Locals[name];
+			g_LastExprSize = 0;
 			ParseExpression();
 			Gen::EmitLine("mov " + SizeDirective(var.size) + " [rbp" + std::to_string(var.rbp_offset) + "], " + RegForSize("rax", var.size));
 			return;

@@ -425,7 +425,7 @@ PUBLIC test_all
 test_all PROC
     push rbp
     mov rbp, rsp
-    sub rsp, 368
+    sub rsp, 400
     mov eax, 128
     mov QWORD PTR [rbp-8], rax
     mov eax, 255
@@ -477,16 +477,30 @@ test_all PROC
     lea rcx, [__gear_fmt_val]
     call printf
     add rsp, 32
+    mov eax, 305419896
+    mov DWORD PTR [rbp-52], eax
+    mov eax, 4660
+    mov WORD PTR [rbp-54], ax
+    movzx eax, WORD PTR [rbp-54]
+    mov WORD PTR [rbp-52], ax
+    mov eax, DWORD PTR [rbp-52]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
+    add rsp, 32
     mov eax, 1431655765
-    mov QWORD PTR [rbp-56], rax
+    mov QWORD PTR [rbp-64], rax
     ; pass address of variable orig
-    lea rax, [rbp-56]
+    lea rax, [rbp-64]
     push rax
     pop rcx
     sub rsp, 32
     call modify_data
     add rsp, 32
-    mov rax, QWORD PTR [rbp-56]
+    mov rax, QWORD PTR [rbp-64]
     ; print RAX to stdout via C runtime printf
     sub rsp, 32
     mov rdx, rax
@@ -495,7 +509,8 @@ test_all PROC
     call printf
     add rsp, 32
     mov eax, 43981
-    mov QWORD PTR [GLOBAL_VAR], rax
+    lea rcx, [GLOBAL_VAR]
+    mov QWORD PTR [rcx], rax
     mov rax, QWORD PTR [GLOBAL_VAR]
     ; print RAX to stdout via C runtime printf
     sub rsp, 32
@@ -506,7 +521,8 @@ test_all PROC
     add rsp, 32
     ; take address of global variable [SIM_VGA]
     lea rax, [SIM_VGA]
-    mov QWORD PTR [VGA_BUF], rax
+    lea rcx, [VGA_BUF]
+    mov QWORD PTR [rcx], rax
     sub rsp, 32
     call clear_and_print
     add rsp, 32
@@ -518,8 +534,8 @@ test_all PROC
     imul rax, 2
     add rcx, rax
     movzx eax, WORD PTR [rcx]
-    mov QWORD PTR [rbp-64], rax
-    mov rax, QWORD PTR [rbp-64]
+    mov QWORD PTR [rbp-72], rax
+    mov rax, QWORD PTR [rbp-72]
     ; print RAX to stdout via C runtime printf
     sub rsp, 32
     mov rdx, rax
@@ -528,10 +544,12 @@ test_all PROC
     call printf
     add rsp, 32
     mov eax, 753664
-    mov QWORD PTR [VGA_BUF], rax
+    lea rcx, [VGA_BUF]
+    mov QWORD PTR [rcx], rax
     ; take address of global variable [SIM_APIC]
     lea rax, [SIM_APIC]
-    mov QWORD PTR [APIC_BASE], rax
+    lea rcx, [APIC_BASE]
+    mov QWORD PTR [rcx], rax
     mov rax, QWORD PTR [APIC_BASE]
     mov rcx, rax
     push rcx
@@ -547,14 +565,14 @@ test_all PROC
     add rcx, rax
     mov DWORD PTR [rcx], edx
     mov eax, 33
-    mov QWORD PTR [rbp-72], rax
-    mov eax, 8192
     mov QWORD PTR [rbp-80], rax
+    mov eax, 8192
+    mov QWORD PTR [rbp-88], rax
     ; pass address of variable irq_num
-    lea rax, [rbp-72]
+    lea rax, [rbp-80]
     push rax
     ; pass address of variable frame_addr
-    lea rax, [rbp-80]
+    lea rax, [rbp-88]
     push rax
     pop rdx
     pop rcx
@@ -569,8 +587,8 @@ test_all PROC
     imul rax, 4
     add rcx, rax
     mov eax, DWORD PTR [rcx]
-    mov QWORD PTR [rbp-88], rax
-    mov rax, QWORD PTR [rbp-88]
+    mov QWORD PTR [rbp-96], rax
+    mov rax, QWORD PTR [rbp-96]
     ; print RAX to stdout via C runtime printf
     sub rsp, 32
     mov rdx, rax
@@ -586,8 +604,8 @@ test_all PROC
     imul rax, 4
     add rcx, rax
     mov eax, DWORD PTR [rcx]
-    mov QWORD PTR [rbp-96], rax
-    mov rax, QWORD PTR [rbp-96]
+    mov QWORD PTR [rbp-104], rax
+    mov rax, QWORD PTR [rbp-104]
     ; print RAX to stdout via C runtime printf
     sub rsp, 32
     mov rdx, rax
@@ -596,11 +614,12 @@ test_all PROC
     call printf
     add rsp, 32
     mov rax, 4276092928
-    mov QWORD PTR [APIC_BASE], rax
+    lea rcx, [APIC_BASE]
+    mov QWORD PTR [rcx], rax
     ; take address of global variable [SIM_PKT]
     lea rax, [SIM_PKT]
-    mov QWORD PTR [rbp-104], rax
-    mov rax, QWORD PTR [rbp-104]
+    mov QWORD PTR [rbp-112], rax
+    mov rax, QWORD PTR [rbp-112]
     mov rcx, rax
     push rcx
     mov eax, 0
@@ -613,7 +632,7 @@ test_all PROC
     pop rcx
     add rcx, rax
     mov BYTE PTR [rcx], dl
-    mov rax, QWORD PTR [rbp-104]
+    mov rax, QWORD PTR [rbp-112]
     mov rcx, rax
     push rcx
     mov eax, 1
@@ -627,7 +646,7 @@ test_all PROC
     imul rax, 4
     add rcx, rax
     mov DWORD PTR [rcx], edx
-    mov rax, QWORD PTR [rbp-104]
+    mov rax, QWORD PTR [rbp-112]
     push rax
     mov eax, 8
     mov r10, rax
@@ -646,7 +665,7 @@ test_all PROC
     imul rax, 4
     add rcx, rax
     mov DWORD PTR [rcx], edx
-    mov rax, QWORD PTR [rbp-104]
+    mov rax, QWORD PTR [rbp-112]
     push rax
     mov eax, 8
     mov r10, rax
@@ -666,20 +685,20 @@ test_all PROC
     add rcx, rax
     mov DWORD PTR [rcx], edx
     mov eax, 2
-    mov QWORD PTR [rbp-112], rax
+    mov QWORD PTR [rbp-120], rax
     ; pass address of variable pkt
-    lea rax, [rbp-104]
+    lea rax, [rbp-112]
     push rax
     ; pass address of variable pkt_count
-    lea rax, [rbp-112]
+    lea rax, [rbp-120]
     push rax
     pop rdx
     pop rcx
     sub rsp, 32
     call process_packet
     add rsp, 32
-    mov QWORD PTR [rbp-120], rax
-    mov rax, QWORD PTR [rbp-120]
+    mov QWORD PTR [rbp-128], rax
+    mov rax, QWORD PTR [rbp-128]
     ; print RAX to stdout via C runtime printf
     sub rsp, 32
     mov rdx, rax
@@ -710,9 +729,23 @@ PUBLIC main
 main PROC
     push rbp
     mov rbp, rsp
-    sub rsp, 112
+    sub rsp, 144
     sub rsp, 32
     call test_all
+    add rsp, 32
+    mov eax, 305419896
+    mov DWORD PTR [rbp-4], eax
+    mov eax, 4660
+    mov WORD PTR [rbp-6], ax
+    movzx eax, WORD PTR [rbp-6]
+    mov WORD PTR [rbp-4], ax
+    mov eax, DWORD PTR [rbp-4]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
     add rsp, 32
     mov eax, 0
     jmp main_ret_25
