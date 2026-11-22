@@ -222,7 +222,6 @@ process_packet PROC
     mov eax, 0
     pop rcx
     add rcx, rax
-    ; field .ver_ihl
     movzx eax, BYTE PTR [rcx]
     push rax
     mov eax, 69
@@ -729,7 +728,7 @@ PUBLIC main
 main PROC
     push rbp
     mov rbp, rsp
-    sub rsp, 144
+    sub rsp, 208
     sub rsp, 32
     call test_all
     add rsp, 32
@@ -740,6 +739,147 @@ main PROC
     movzx eax, WORD PTR [rbp-6]
     mov WORD PTR [rbp-4], ax
     mov eax, DWORD PTR [rbp-4]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
+    add rsp, 32
+    ; take address of global variable [SIM_PKT]
+    lea rax, [SIM_PKT]
+    mov QWORD PTR [rbp-16], rax
+    mov rcx, QWORD PTR [rbp-16]
+    push rcx
+    mov eax, 100
+    pop rcx
+    mov DWORD PTR [rcx], eax
+    mov rcx, QWORD PTR [rbp-16]
+    add rcx, 4
+    push rcx
+    mov eax, 200
+    pop rcx
+    mov DWORD PTR [rcx], eax
+    mov rcx, QWORD PTR [rbp-16]
+    mov eax, DWORD PTR [rcx]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
+    add rsp, 32
+    mov rcx, QWORD PTR [rbp-16]
+    add rcx, 4
+    mov eax, DWORD PTR [rcx]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
+    add rsp, 32
+    mov rcx, QWORD PTR [rbp-16]
+    push rcx
+    mov eax, 1
+    pop rcx
+    imul rax, rax, 8
+    add rcx, rax
+    push rcx
+    mov eax, 300
+    pop rcx
+    mov DWORD PTR [rcx], eax
+    mov rcx, QWORD PTR [rbp-16]
+    push rcx
+    mov eax, 1
+    pop rcx
+    imul rax, rax, 8
+    add rcx, rax
+    add rcx, 4
+    push rcx
+    mov eax, 400
+    pop rcx
+    mov DWORD PTR [rcx], eax
+    mov rcx, QWORD PTR [rbp-16]
+    push rcx
+    mov eax, 1
+    pop rcx
+    imul rax, rax, 8
+    add rcx, rax
+    mov eax, DWORD PTR [rcx]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
+    add rsp, 32
+    mov rcx, QWORD PTR [rbp-16]
+    push rcx
+    mov eax, 1
+    pop rcx
+    imul rax, rax, 8
+    add rcx, rax
+    add rcx, 4
+    mov eax, DWORD PTR [rcx]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
+    add rsp, 32
+    mov rax, QWORD PTR [rbp-16]
+    push rax
+    mov eax, 8
+    mov r10, rax
+    pop rax
+    add rax, r10
+    mov rcx, rax
+    push rcx
+    mov eax, 0
+    pop rcx
+    imul rax, 4
+    add rcx, rax
+    mov eax, DWORD PTR [rcx]
+    mov QWORD PTR [rbp-24], rax
+    mov rax, QWORD PTR [rbp-16]
+    push rax
+    mov eax, 12
+    mov r10, rax
+    pop rax
+    add rax, r10
+    mov rcx, rax
+    push rcx
+    mov eax, 0
+    pop rcx
+    imul rax, 4
+    add rcx, rax
+    mov eax, DWORD PTR [rcx]
+    mov QWORD PTR [rbp-32], rax
+    mov rax, QWORD PTR [rbp-24]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
+    add rsp, 32
+    mov rax, QWORD PTR [rbp-32]
+    ; print RAX to stdout via C runtime printf
+    sub rsp, 32
+    mov rdx, rax
+    mov r8, rax
+    lea rcx, [__gear_fmt_val]
+    call printf
+    add rsp, 32
+    mov rcx, QWORD PTR [rbp-16]
+    push rcx
+    mov eax, 21930
+    pop rcx
+    mov WORD PTR [rcx], ax
+    mov rcx, QWORD PTR [rbp-16]
+    mov eax, DWORD PTR [rcx]
     ; print RAX to stdout via C runtime printf
     sub rsp, 32
     mov rdx, rax

@@ -329,7 +329,7 @@ uint8_t GetIdentifierType(const std::string& identifier)
 	if (
 		identifier == "if" || identifier == "else" || identifier == "loop" || identifier == "return" ||
 		identifier == "nested" || identifier == ".then" || identifier == ".nested" ||
-		identifier == "break" || identifier == "print"
+		identifier == "break" || identifier == "print" || identifier == "struct"
 	)
 	{
 		return KEYWORD;

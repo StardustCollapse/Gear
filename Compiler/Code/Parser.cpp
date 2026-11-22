@@ -128,6 +128,105 @@ static VAR_INFO AllocLocal(const std::string& name, uint8_t size)
 static uint8_t g_LastExprSize = 0;
 
 // ============================================================
+// Struct definition and field tracking
+// ============================================================
+struct STRUCT_FIELD {
+	std::string name;
+	uint8_t size;
+	uint16_t offset;
+};
+
+struct STRUCT_DEF {
+	std::string name;
+	std::vector<STRUCT_FIELD> fields;
+	uint16_t total_size;
+};
+
+static std::unordered_map<std::string, STRUCT_DEF> g_StructDefs;
+
+static const STRUCT_FIELD* FindStructField(const std::string& field_name, const STRUCT_DEF** out_struct = nullptr)
+{
+	for (auto& pair : g_StructDefs)
+	{
+		for (auto& f : pair.second.fields)
+		{
+			if (f.name == field_name)
+			{
+				if (out_struct) *out_struct = &pair.second;
+				return &f;
+			}
+		}
+	}
+	return nullptr;
+}
+
+static void EmitLoadBasePtr(const std::string& reg64, const std::string& name)
+{
+	auto it = g_Locals.find(name);
+	if (it != g_Locals.end())
+	{
+		EmitLoadMem(reg64, it->second.size, "[rbp" + std::to_string(it->second.rbp_offset) + "]");
+	}
+	else if (Gen::IsGlobalVar(name))
+	{
+		Gen::EmitLine("mov " + reg64 + ", QWORD PTR [" + name + "]");
+	}
+	else
+	{
+		Gen::EmitLine("lea " + reg64 + ", [" + name + "]");
+	}
+}
+
+static void ParseStructDefinition()
+{
+	Advance(); // consume 'struct'
+	if (Peek().type != IDENTIFIER)
+	{
+		throw std::runtime_error("Error: Expected struct name at line " + std::to_string(Peek().line));
+	}
+	std::string struct_name = Peek().name;
+	Advance();
+
+	ExpectOp('{', "{");
+	STRUCT_DEF sdef;
+	sdef.name = struct_name;
+	sdef.total_size = 0;
+
+	while (!AtEnd() && !CheckOp('}'))
+	{
+		while (!AtEnd() && (CheckOp(';') || CheckOp(','))) Advance();
+		if (CheckOp('}')) break;
+
+		if (Peek().type != IDENTIFIER)
+		{
+			throw std::runtime_error("Error: Expected field name in struct '" + struct_name + "' at line " + std::to_string(Peek().line));
+		}
+		std::string field_name = Peek().name;
+		Advance();
+
+		ExpectOp(':', ":");
+		if (Peek().type != CONSTANT)
+		{
+			throw std::runtime_error("Error: Expected field size in struct '" + struct_name + "' at line " + std::to_string(Peek().line));
+		}
+		uint8_t field_size = (uint8_t)Peek().value;
+		Advance();
+
+		STRUCT_FIELD f;
+		f.name = field_name;
+		f.size = field_size;
+		f.offset = sdef.total_size;
+		sdef.fields.push_back(f);
+		sdef.total_size += field_size;
+
+		while (!AtEnd() && (CheckOp(';') || CheckOp(','))) Advance();
+	}
+
+	ExpectOp('}', "}");
+	g_StructDefs[struct_name] = sdef;
+}
+
+// ============================================================
 // Angle bracket syntax: <IDENTIFIER>
 // Semantic: Access the original data of function parameter 'name' (dereferencing the pointer)
 // Fallback: Access global variable if not a local parameter
@@ -510,32 +609,83 @@ static void ParsePrimary()
 			return;
 		}
 
-		// Field access: name @ offset . field
+		// Field access: name @ offset . field or name @ offset
 		if (CheckOp('@'))
 		{
-			auto it = g_Locals.find(name);
-			if (it == g_Locals.end())
-				throw std::runtime_error("Error: Undefined variable '" + name + "' at line " + std::to_string(Peek().line));
-			auto& var = it->second;
-
-			EmitLoadMem("rcx", var.size, "[rbp" + std::to_string(var.rbp_offset) + "]");
-
+			EmitLoadBasePtr("rcx", name);
 			Advance(); // skip @
 			Gen::EmitLine("push rcx");
-			ParseExpression(); // offset in rax
+			ParseExpression(); // index/offset in rax
 			Gen::EmitLine("pop rcx");
-			Gen::EmitLine("add rcx, rax");
 
-			// .field
-			if (Peek().type == OPERATOR && Peek().op == '.')
+			if (CheckOp('.'))
 			{
-				Advance();
+				Advance(); // skip .
 				std::string field = Peek().name;
 				Advance();
-				Gen::EmitComment("field ." + field);
+				const STRUCT_DEF* sdef = nullptr;
+				const STRUCT_FIELD* f = FindStructField(field, &sdef);
+				if (!f) throw std::runtime_error("Error: Unknown field '" + field + "' at line " + std::to_string(Peek().line));
+
+				if (sdef->total_size > 1)
+				{
+					Gen::EmitLine("imul rax, rax, " + std::to_string(sdef->total_size));
+				}
+				Gen::EmitLine("add rcx, rax");
+				if (f->offset > 0)
+				{
+					Gen::EmitLine("add rcx, " + std::to_string(f->offset));
+				}
+				uint8_t read_size = f->size;
+				if (CheckOp(':'))
+				{
+					Advance();
+					read_size = (uint8_t)Peek().value;
+					Advance();
+				}
+				EmitLoadMem("rax", read_size, "[rcx]");
+				g_LastExprSize = read_size;
+				return;
 			}
 
-			Gen::EmitLine("movzx eax, BYTE PTR [rcx]");
+			// Plain byte offset indexing without .field
+			Gen::EmitLine("add rcx, rax");
+			uint8_t read_size = 1;
+			if (CheckOp(':'))
+			{
+				Advance();
+				read_size = (uint8_t)Peek().value;
+				Advance();
+			}
+			EmitLoadMem("rax", read_size, "[rcx]");
+			g_LastExprSize = read_size;
+			return;
+		}
+
+		// Field access: name . field
+		if (CheckOp('.'))
+		{
+			EmitLoadBasePtr("rcx", name);
+			Advance(); // skip .
+			std::string field = Peek().name;
+			Advance();
+			const STRUCT_DEF* sdef = nullptr;
+			const STRUCT_FIELD* f = FindStructField(field, &sdef);
+			if (!f) throw std::runtime_error("Error: Unknown field '" + field + "' at line " + std::to_string(Peek().line));
+
+			if (f->offset > 0)
+			{
+				Gen::EmitLine("add rcx, " + std::to_string(f->offset));
+			}
+			uint8_t read_size = f->size;
+			if (CheckOp(':'))
+			{
+				Advance();
+				read_size = (uint8_t)Peek().value;
+				Advance();
+			}
+			EmitLoadMem("rax", read_size, "[rcx]");
+			g_LastExprSize = read_size;
 			return;
 		}
 
@@ -1035,6 +1185,117 @@ static void ParseStatement()
 		size_t saved_pos = g_Pos;
 		Advance();
 
+		// Struct field write: name.field = expr or name.field:size = expr
+		if (CheckOp('.'))
+		{
+			Advance(); // skip .
+			std::string field = Peek().name;
+			Advance();
+			const STRUCT_DEF* sdef = nullptr;
+			const STRUCT_FIELD* f = FindStructField(field, &sdef);
+			if (f)
+			{
+				uint8_t write_size = f->size;
+				if (CheckOp(':'))
+				{
+					Advance();
+					write_size = (uint8_t)Peek().value;
+					Advance();
+				}
+				if (CheckOp('='))
+				{
+					Advance();
+					EmitLoadBasePtr("rcx", name);
+					if (f->offset > 0)
+					{
+						Gen::EmitLine("add rcx, " + std::to_string(f->offset));
+					}
+					Gen::EmitLine("push rcx");
+					g_LastExprSize = 0;
+					ParseExpression();
+					Gen::EmitLine("pop rcx");
+					if (g_LastExprSize > 0 && g_LastExprSize < write_size)
+						write_size = g_LastExprSize;
+					Gen::EmitLine("mov " + SizeDirective(write_size) + " [rcx], " + RegForSize("rax", write_size));
+					return;
+				}
+			}
+			g_Pos = saved_pos;
+		}
+
+		// Struct field write with @ or indexed write: name@i.field = expr or name@i = expr
+		if (CheckOp('@'))
+		{
+			Advance(); // skip @
+			EmitLoadBasePtr("rcx", name);
+			Gen::EmitLine("push rcx");
+			ParseExpression(); // index in rax
+			Gen::EmitLine("pop rcx");
+
+			if (CheckOp('.'))
+			{
+				Advance(); // skip .
+				std::string field = Peek().name;
+				Advance();
+				const STRUCT_DEF* sdef = nullptr;
+				const STRUCT_FIELD* f = FindStructField(field, &sdef);
+				if (!f) throw std::runtime_error("Error: Unknown field '" + field + "' at line " + std::to_string(Peek().line));
+
+				if (sdef->total_size > 1)
+				{
+					Gen::EmitLine("imul rax, rax, " + std::to_string(sdef->total_size));
+				}
+				Gen::EmitLine("add rcx, rax");
+				if (f->offset > 0)
+				{
+					Gen::EmitLine("add rcx, " + std::to_string(f->offset));
+				}
+				uint8_t write_size = f->size;
+				if (CheckOp(':'))
+				{
+					Advance();
+					write_size = (uint8_t)Peek().value;
+					Advance();
+				}
+				if (CheckOp('='))
+				{
+					Advance();
+					Gen::EmitLine("push rcx");
+					g_LastExprSize = 0;
+					ParseExpression();
+					Gen::EmitLine("pop rcx");
+					if (g_LastExprSize > 0 && g_LastExprSize < write_size)
+						write_size = g_LastExprSize;
+					Gen::EmitLine("mov " + SizeDirective(write_size) + " [rcx], " + RegForSize("rax", write_size));
+					return;
+				}
+			}
+			else
+			{
+				Gen::EmitLine("add rcx, rax");
+				uint8_t write_size = 1;
+				if (CheckOp(':'))
+				{
+					Advance();
+					write_size = (uint8_t)Peek().value;
+					Advance();
+				}
+				if (CheckOp('='))
+				{
+					Advance();
+					Gen::EmitLine("push rcx");
+					g_LastExprSize = 0;
+					ParseExpression();
+					Gen::EmitLine("pop rcx");
+					if (g_LastExprSize > 0 && g_LastExprSize < write_size)
+						write_size = g_LastExprSize;
+					Gen::EmitLine("mov " + SizeDirective(write_size) + " [rcx], " + RegForSize("rax", write_size));
+					return;
+				}
+			}
+			g_Pos = saved_pos;
+		}
+
 		// If name is an existing global variable (not shadowed by a local variable)
 		if (g_Locals.find(name) == g_Locals.end() && Gen::IsGlobalVar(name))
 		{
@@ -1380,11 +1641,19 @@ void Gear::Parser::Parse(const std::vector<TOKEN>& tokens)
 	g_AllNestedFuncs.clear();
 	g_InBracketDeref = false;
 	g_LastFuncName.clear();
+	g_StructDefs.clear();
 	Gen::Reset();
 
 	while (!AtEnd())
 	{
 		if (CheckOp(';')) { Advance(); continue; }
+
+		// Struct definition: struct name { field:size ... }
+		if (Check(KEYWORD, "struct"))
+		{
+			ParseStructDefinition();
+			continue;
+		}
 
 		// Top-level Global variable definition: NAME = value or NAME:size = value (No special symbol needed!)
 		if (Peek().type == IDENTIFIER &&

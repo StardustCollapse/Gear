@@ -3,6 +3,15 @@ HW_STATUS_REG = 0x1000
 GLOBAL_VAR = 0x1111
 VGA_BUF = 0xB8000
 
+struct pkt_hdr {
+    ver_ihl:1
+}
+
+struct Point {
+    px:4
+    py:4
+}
+
 // Simulated hardware buffers for user-mode execution
 SIM_APIC:1024 = 0
 SIM_VGA:4000 = 0
@@ -173,5 +182,25 @@ main() {
     b:2 = 0x1234
     a:4 = b:2
     print(a)
+
+    pt = [SIM_PKT]
+    pt.px = 100
+    pt.py = 200
+    print(pt.px)
+    print(pt.py)
+
+    pt@1.px = 300
+    pt@1.py = 400
+    print(pt@1.px)
+    print(pt@1.py)
+
+    chk_px = [pt + 8:4]@0
+    chk_py = [pt + 12:4]@0
+    print(chk_px)
+    print(chk_py)
+
+    pt.px:2 = 0x55AA
+    print(pt.px)
+
     return 0
 }
